@@ -1,0 +1,2 @@
+CRON_TZ=Asia/Shanghai
+0 19 * * 1-5 cd /mnt/DATA/home/ljh/nzh/quant && /bin/bash scripts/daily_run.sh

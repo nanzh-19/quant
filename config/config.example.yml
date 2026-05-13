@@ -1,0 +1,73 @@
+project:
+  name: "a_share_quant"
+
+storage:
+  root_dir: "."
+  data_dir: "data"
+  raw_dir: "data/raw"
+  daily_dir: "data/daily"
+  outputs_dir: "outputs"
+  metadata_db: "data/metadata.sqlite3"
+  holdings_file: "data/holdings.csv"
+  universe_file: "data/universe.csv"
+
+data:
+  provider: "eastmoney"
+  adjust: "qfq"
+  fallback_provider: "none"
+  initial_lookback_days: 500
+  initial_max_symbols: 1200
+  incremental_lookback_days: 10
+  incremental_new_symbol_max: 400
+  include_asset_types: ["stock", "etf"]
+  min_history_days_stock: 120
+  min_history_days_etf: 60
+  request_timeout: 20
+  sleep_seconds: 0.1
+  max_retries: 3
+
+strategy:
+  name: "momentum"
+  rebalance_frequency: "daily"
+  eligible_asset_types: ["stock", "etf"]
+  max_positions: 10
+  min_price_stock: 5.0
+  min_price_etf: 0.5
+  min_avg_turnover_million_stock: 80
+  min_avg_turnover_million_etf: 30
+  lookback_momentum_days: 60
+  lookback_skip_days: 5
+  min_ret_20: 0.0
+  min_ret_60: 0.1
+  min_ret_120: 0.15
+  max_volatility_20: 0.28
+  min_drawdown_20: -0.12
+  require_ma_trend: true
+  weight_ret_120: 0.45
+  weight_ret_60: 0.30
+  weight_ret_20: 0.10
+  weight_ma_gap_20_60: 0.10
+  weight_low_volatility: 0.05
+
+backtest:
+  initial_capital: 1000000
+  commission_rate: 0.001
+  stamp_duty_rate: 0.001
+  slippage_rate: 0.0005
+
+tuning:
+  max_positions_list: [5, 10]
+  min_price_stock_list: [3.0, 5.0]
+  min_avg_turnover_million_stock_list: [50, 80]
+  min_ret_20_list: [0.0]
+  min_ret_60_list: [0.0, 0.1]
+  min_ret_120_list: [0.1, 0.15]
+  weight_ret_60_list: [0.6, 0.8]
+
+report:
+  top_n: 10
+
+dashboard:
+  host: "0.0.0.0"
+  port: 8765
+  access_token: "change-this-dashboard-token"

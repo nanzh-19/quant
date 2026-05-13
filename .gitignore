@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.codex
+.venv/
+
+data/*
+!data/.gitkeep
+
+outputs/*
+!outputs/.gitkeep
+
+config/config.yml
+config/local*.yml
+
+hongli/dividend_analysis/outputs/
+tools/cloudflared
