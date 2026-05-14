@@ -1,6 +1,28 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+
+
+def _rolling_log_regression_score(close: pd.Series, window: int) -> pd.Series:
+    x = np.arange(window, dtype=float)
+    x_centered = x - x.mean()
+    x_var = float((x_centered**2).sum())
+
+    def _score(values) -> float:
+        if len(values) != window or (values <= 0).any():
+            return np.nan
+        y = np.log(values.astype(float))
+        y_centered = y - y.mean()
+        slope = float((x_centered * y_centered).sum() / x_var)
+        fitted = y.mean() + slope * x_centered
+        ss_res = float(((y - fitted) ** 2).sum())
+        ss_tot = float(((y - y.mean()) ** 2).sum())
+        r2 = 0.0 if ss_tot <= 0 else 1.0 - ss_res / ss_tot
+        annualized_return = np.exp(slope * 250.0) - 1.0
+        return float(annualized_return * r2)
+
+    return close.rolling(window).apply(_score, raw=True)
 
 
 def add_basic_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -18,4 +40,5 @@ def add_basic_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out["avg_amount_20"] = out["amount"].rolling(20).mean()
     out["volatility_20"] = out["ret_1"].rolling(20).std(ddof=0) * (20**0.5)
     out["drawdown_20"] = out["close"] / out["close"].rolling(20).max() - 1.0
+    out["reg_momentum_25"] = _rolling_log_regression_score(out["close"], 25)
     return out

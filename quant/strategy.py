@@ -275,12 +275,49 @@ class DualMAStrategy(BaseStrategy):
         return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
+class ETFRegressionMomentumStrategy(BaseStrategy):
+    """ETF 轮动：用近 25 日对数价格回归年化收益 * R2 作为动量得分。"""
+
+    def __init__(self, strategy_cfg: dict) -> None:
+        self.symbols = [str(s).zfill(6) for s in strategy_cfg.get("symbols", ["518880", "513100", "159915", "510300"])]
+        self.max_positions = int(strategy_cfg.get("max_positions", 1))
+        self.min_score = float(strategy_cfg.get("min_score", 0.0))
+        self.score_column = str(strategy_cfg.get("score_column", "reg_momentum_25"))
+
+    @property
+    def name(self) -> str:
+        return "etf_regression_momentum"
+
+    def params(self) -> dict:
+        return {
+            "symbols": self.symbols,
+            "max_positions": self.max_positions,
+            "min_score": self.min_score,
+            "score_column": self.score_column,
+        }
+
+    def rank(self, snapshot: pd.DataFrame) -> pd.DataFrame:
+        if snapshot.empty:
+            return snapshot
+        df = snapshot.copy()
+        if self.score_column not in df.columns:
+            df[self.score_column] = pd.NA
+        df["symbol"] = df["symbol"].astype(str).str.zfill(6)
+        df = df[df["symbol"].isin(self.symbols)].copy()
+        df = df[pd.to_numeric(df[self.score_column], errors="coerce").notna()]
+        df["score"] = pd.to_numeric(df[self.score_column], errors="coerce")
+        df = df[df["score"] > self.min_score]
+        df["reason"] = "etf_regression_momentum;score=" + df["score"].round(4).astype(str)
+        return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
+
+
 STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "momentum": MomentumStrategy,
     "buy_and_hold": BuyAndHoldStrategy,
     "mean_reversion": MeanReversionStrategy,
     "low_volatility": LowVolatilityStrategy,
     "dual_ma": DualMAStrategy,
+    "etf_regression_momentum": ETFRegressionMomentumStrategy,
 }
 
 

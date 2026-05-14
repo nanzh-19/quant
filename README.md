@@ -258,6 +258,9 @@ python3 run.py backfill_etfs --start-date 2000-01-01 --max-symbols 0
 
 - `outputs/replication_510300_ma60_public.csv`
 - `outputs/replication_dual_ma_internal.csv`
+- `outputs/replication_etf_regression_momentum_summary.csv`
+- `outputs/replication_etf_regression_momentum_returns.csv`
+- `outputs/replication_etf_regression_momentum_picks.csv`
 
 ## Validation Workflow
 
@@ -268,6 +271,7 @@ python3 run.py quality
 python3 run.py external_check --sample-size 30
 python3 scripts/validate_backtest_basics.py
 python3 research/replication/replicate_dual_ma_internal.py
+python3 research/replication/replicate_etf_regression_momentum.py
 python3 research/replication/replicate_510300_ma60_public.py
 ```
 
@@ -275,6 +279,7 @@ python3 research/replication/replicate_510300_ma60_public.py
 
 - `validate_backtest_basics.py` 用 `510300`、`510050`、`159915` 买入持有验证回测引擎逐日收益与独立收盘价计算完全一致。
 - `replicate_dual_ma_internal.py` 用双均线策略验证策略模块输出与独立向量化实现完全一致。
+- `replicate_etf_regression_momentum.py` 复现一个公开 ETF 轮动规则：`518880`、`513100`、`159915`、`510300` 中选近 25 日对数价格回归动量最高的 ETF，并验证回测引擎与独立计算完全一致。
 - `replicate_510300_ma60_public.py` 记录一个公开 60 日均线策略案例。当前本地前复权口径尚未对齐公开材料收益，保留为后续数据口径和交易假设排查样本。
 - `run.py external_check` 会随机抽样本地最新 K 线并请求东方财富同日 K 线，检查 OHLCV 和涨跌幅口径是否一致。
 
@@ -294,6 +299,15 @@ python3 research/replication/replicate_510300_ma60_public.py
 - 使用长期动量 + 趋势 + 低波动组合打分，并截取前 `N` 个标的
 
 参数已配置化，可通过 `config/config.yml` 的 `strategy` 和 `tuning` 段调整。
+
+已注册策略包括：
+
+- `momentum`
+- `mean_reversion`
+- `low_volatility`
+- `dual_ma`
+- `buy_and_hold`
+- `etf_regression_momentum`
 
 ## Backtest
 
