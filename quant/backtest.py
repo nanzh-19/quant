@@ -81,8 +81,14 @@ def run_cross_sectional_backtest_from_panel(
         if rebalance:
             ranked = strategy.rank(day_df)
             if ranked.empty:
-                if not current_symbols:
-                    continue
+                new_symbols = set()
+                old_symbols = current_symbols
+                if old_symbols:
+                    sell_fraction = 1.0
+                    cost = sell_fraction * (commission_rate + slippage_rate + stamp_duty_rate)
+                    day_turnover = sell_fraction
+                    current_symbols = new_symbols
+                    prev_rebalance_date = trade_date
             else:
                 new_symbols = set(ranked["symbol"].astype(str))
                 old_symbols = current_symbols
@@ -106,6 +112,17 @@ def run_cross_sectional_backtest_from_panel(
                 selections.append(ranked[["date", "symbol", "name", "score", "close"]])
 
         if not current_symbols:
+            portfolio_returns.append(
+                {
+                    "date": trade_date,
+                    "return": -cost,
+                    "gross_return": 0.0,
+                    "cost": cost,
+                    "turnover": day_turnover,
+                    "positions": 0,
+                    "rebalanced": rebalance,
+                }
+            )
             continue
 
         held = day_df[day_df["symbol"].isin(current_symbols)]

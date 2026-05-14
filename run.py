@@ -23,21 +23,24 @@ from quant.app import (
 )
 from quant.config import load_config
 from quant.dashboard import build_dashboard, serve_dashboard
+from quant.quality import run_daily_quality_check
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="A-share daily quant system")
     parser.add_argument(
         "command",
-        choices=["update", "fast_update", "fast_daily", "update_sz", "experiment", "backtest", "recommend", "daily", "status", "plot", "inventory", "backfill_stocks", "backfill_etfs", "sweep", "stale", "retry_failed", "repair_recent", "dashboard"],
+        choices=["update", "fast_update", "fast_daily", "update_sz", "experiment", "backtest", "recommend", "daily", "status", "plot", "inventory", "quality", "backfill_stocks", "backfill_etfs", "sweep", "stale", "retry_failed", "repair_recent", "dashboard"],
         help="Run data update, strategy experiment, backtest, or recommendation report",
     )
     parser.add_argument("--config", default="config/config.yml", help="Config path")
     parser.add_argument("--symbol", default="", help="Symbol for plot command")
     parser.add_argument("--days", type=int, default=120, help="Chart lookback days")
     parser.add_argument("--max-symbols", type=int, default=200, help="Max symbols for partial Shenzhen update")
+    parser.add_argument("--quality-max-symbols", type=int, default=0, help="Max symbols for quality command; 0 means all")
     parser.add_argument("--start-date", default="2000-01-01", help="History start date for backfill commands")
     parser.add_argument("--only-missing", action="store_true", help="Only fetch symbols without local daily csv")
+    parser.add_argument("--repair", action="store_true", help="Repair local daily csv files for quality command")
     parser.add_argument("--workers", type=int, default=4, help="Concurrent workers for backfill commands")
     parser.add_argument("--lookback-days", type=int, default=7, help="Lookback days for fast update commands")
     parser.add_argument("--host", default="127.0.0.1", help="Host for dashboard server")
@@ -77,9 +80,10 @@ def main() -> None:
         print(actions.to_string(index=False))
     elif args.command == "daily":
         result = update_data(ctx)
+        _, quality_summary = run_daily_quality_check(ctx.storage.daily_dir, ctx.storage.outputs_dir, repair=False)
         ranking, actions = generate_recommendations(ctx)
         _, summary_df = generate_data_inventory(ctx)
-        status_path = generate_daily_status_report(ctx, update_result=result, ranking=ranking, inventory_summary=summary_df)
+        status_path = generate_daily_status_report(ctx, update_result=result, ranking=ranking, inventory_summary=summary_df, quality_summary=quality_summary)
         print(result)
         print("=== Top Recommendations ===")
         print(ranking.to_string(index=False))
@@ -89,9 +93,10 @@ def main() -> None:
         print(status_path)
     elif args.command == "fast_daily":
         result = fast_update_data(ctx, workers=args.workers, lookback_days=args.lookback_days)
+        _, quality_summary = run_daily_quality_check(ctx.storage.daily_dir, ctx.storage.outputs_dir, repair=False)
         ranking, actions = generate_recommendations(ctx)
         _, summary_df = generate_data_inventory(ctx)
-        status_path = generate_daily_status_report(ctx, update_result=result, ranking=ranking, inventory_summary=summary_df)
+        status_path = generate_daily_status_report(ctx, update_result=result, ranking=ranking, inventory_summary=summary_df, quality_summary=quality_summary)
         print(result)
         print("=== Top Recommendations ===")
         print(ranking.to_string(index=False))
@@ -119,6 +124,22 @@ def main() -> None:
         print("Saved:")
         print(ctx.storage.outputs_dir / "data_inventory_summary.csv")
         print(ctx.storage.outputs_dir / "data_inventory_detail.csv")
+    elif args.command == "quality":
+        report_df, summary_df = run_daily_quality_check(
+            daily_dir=ctx.storage.daily_dir,
+            outputs_dir=ctx.storage.outputs_dir,
+            repair=args.repair,
+            max_symbols=args.quality_max_symbols,
+        )
+        print("=== Data Quality Summary ===")
+        print(summary_df.to_string(index=False))
+        print("=== Data Quality Status Counts ===")
+        print(report_df["status"].value_counts().to_string() if not report_df.empty else "no_files")
+        print("Saved:")
+        print(ctx.storage.outputs_dir / "data_quality_summary.csv")
+        print(ctx.storage.outputs_dir / "data_quality_report.csv")
+        if not args.repair and not summary_df.empty and summary_df.iloc[0]["status"] != "pass":
+            raise SystemExit(1)
     elif args.command == "backfill_stocks":
         start_date = datetime.strptime(args.start_date, "%Y-%m-%d").date()
         result = backfill_stock_history(

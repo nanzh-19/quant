@@ -797,6 +797,7 @@ def generate_daily_status_report(
     update_result: dict | None = None,
     ranking: pd.DataFrame | None = None,
     inventory_summary: pd.DataFrame | None = None,
+    quality_summary: pd.DataFrame | None = None,
 ) -> Path:
     if inventory_summary is None:
         _, inventory_summary = generate_data_inventory(ctx)
@@ -840,6 +841,13 @@ def generate_daily_status_report(
 
     if inventory_summary is not None and not inventory_summary.empty:
         lines.extend(["## Inventory Summary", "", inventory_summary.to_string(index=False), ""])
+
+    if quality_summary is None:
+        quality_path = ctx.storage.outputs_dir / "data_quality_summary.csv"
+        if quality_path.exists():
+            quality_summary = pd.read_csv(quality_path)
+    if quality_summary is not None and not quality_summary.empty:
+        lines.extend(["## Data Quality", "", quality_summary.to_string(index=False), ""])
 
     if ranking_preview is not None and not ranking_preview.empty:
         preview_cols = [col for col in ["symbol", "name", "asset_type", "close", "ret_20", "ret_60", "score"] if col in ranking_preview.columns]

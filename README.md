@@ -124,6 +124,18 @@ python3 run.py status
 python3 run.py inventory
 ```
 
+检查本地日线数据质量：
+
+```bash
+python3 run.py quality
+```
+
+必要时按统一 OHLCV 规范修复本地日线 CSV：
+
+```bash
+python3 run.py quality --repair
+```
+
 执行策略参数扫描：
 
 ```bash
@@ -218,10 +230,38 @@ python3 run.py backfill_etfs --start-date 2000-01-01 --max-symbols 0
 - `outputs/backtest_returns.csv`
 - `outputs/backtest_picks.csv`
 - `outputs/backtest_summary.csv`
+- `outputs/backtest_validation_buy_hold.csv`
+
+数据质量：
+
+- `outputs/data_quality_summary.csv`
+- `outputs/data_quality_report.csv`
 
 参数扫描：
 
 - `outputs/strategy_sweep.csv`
+
+公开策略复现：
+
+- `outputs/replication_510300_ma60_public.csv`
+- `outputs/replication_dual_ma_internal.csv`
+
+## Validation Workflow
+
+建议在设计新策略前先跑以下验证：
+
+```bash
+python3 run.py quality
+python3 scripts/validate_backtest_basics.py
+python3 research/replication/replicate_dual_ma_internal.py
+python3 research/replication/replicate_510300_ma60_public.py
+```
+
+说明：
+
+- `validate_backtest_basics.py` 用 `510300`、`510050`、`159915` 买入持有验证回测引擎逐日收益与独立收盘价计算完全一致。
+- `replicate_dual_ma_internal.py` 用双均线策略验证策略模块输出与独立向量化实现完全一致。
+- `replicate_510300_ma60_public.py` 记录一个公开 60 日均线策略案例。当前本地前复权口径尚未对齐公开材料收益，保留为后续数据口径和交易假设排查样本。
 
 网页入口：
 
