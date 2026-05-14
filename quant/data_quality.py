@@ -78,8 +78,13 @@ def _lot_volume_mask(df: pd.DataFrame) -> pd.Series:
         return pd.Series(dtype=bool)
     valid = (df["close"] > 0) & (df["volume"] > 0) & (df["amount"] > 0)
     ratio = df["amount"] / (df["close"] * df["volume"])
-    # EastMoney/Tencent K-line APIs report volume in lots; local storage uses shares.
-    return valid & ratio.between(20, 200)
+    candidate = valid & ratio.between(30, 200)
+    # Require at least 10 consecutive rows to confirm a genuine lot-unit segment,
+    # avoiding false positives on early low-price stocks after forward-adjustment.
+    streak = candidate.astype(int)
+    groups = streak.ne(streak.shift()).cumsum()
+    group_sizes = streak.groupby(groups).transform("sum")
+    return candidate & (group_sizes >= 10)
 
 
 def _recompute_derived_fields(df: pd.DataFrame) -> pd.DataFrame:

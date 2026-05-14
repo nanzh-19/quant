@@ -21,7 +21,7 @@ def build_backtest_panel(
         if not path.exists():
             continue
         try:
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, dtype={"symbol": str, "market": str})
         except (EmptyDataError, ParserError):
             continue
         asset_type = getattr(item, "asset_type", "stock")

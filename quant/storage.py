@@ -11,6 +11,9 @@ from quant.config import AppConfig
 from quant.data_quality import normalize_daily_frame
 
 
+DAILY_CSV_DTYPES = {"symbol": str, "market": str}
+
+
 class Storage:
     def __init__(self, config: AppConfig) -> None:
         storage_cfg = config.section("storage")
@@ -67,7 +70,7 @@ class Storage:
         path = self.symbol_path(symbol)
         if not path.exists():
             return pd.DataFrame()
-        df = pd.read_csv(path)
+        df = pd.read_csv(path, dtype=DAILY_CSV_DTYPES)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df.sort_values("date").reset_index(drop=True)
@@ -77,7 +80,7 @@ class Storage:
         market = ""
         if path.exists():
             try:
-                old = pd.read_csv(path)
+                old = pd.read_csv(path, dtype=DAILY_CSV_DTYPES)
             except (EmptyDataError, ParserError):
                 old = pd.DataFrame()
             if not old.empty:
