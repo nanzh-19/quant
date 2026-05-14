@@ -14,6 +14,7 @@ from quant.charting import render_candlestick_chart
 from quant.config import AppConfig
 from quant.data_provider import EastMoneyDataProvider
 from quant.inventory import build_data_inventory
+from quant.reporting import build_backtest_diagnostics
 from quant.research import build_latest_snapshot
 from quant.storage import Storage
 from quant.strategy import BaseStrategy, MomentumStrategy, create_strategy
@@ -592,6 +593,7 @@ def run_backtest(ctx: AppContext) -> tuple[pd.DataFrame, pd.DataFrame]:
     picks_df.to_csv(ctx.storage.outputs_dir / "backtest_picks.csv", index=False)
     summary_df = summarize_backtest(returns_df, initial_capital=float(ctx.config.section("backtest").get("initial_capital", 1_000_000)))
     summary_df.to_csv(ctx.storage.outputs_dir / "backtest_summary.csv", index=False)
+    build_backtest_diagnostics(returns_df=returns_df, picks_df=picks_df, outputs_dir=ctx.storage.outputs_dir)
     return returns_df, picks_df
 
 
@@ -850,7 +852,7 @@ def generate_daily_status_report(
         lines.extend(["## Data Quality", "", quality_summary.to_string(index=False), ""])
 
     if ranking_preview is not None and not ranking_preview.empty:
-        preview_cols = [col for col in ["symbol", "name", "asset_type", "close", "ret_20", "ret_60", "score"] if col in ranking_preview.columns]
+        preview_cols = [col for col in ["symbol", "name", "asset_type", "close", "ret_20", "ret_60", "score", "reason"] if col in ranking_preview.columns]
         lines.extend(["## Top Recommendations", "", ranking_preview[preview_cols].head(10).to_string(index=False), ""])
 
     report_path = ctx.storage.outputs_dir / "daily_status.md"

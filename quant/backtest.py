@@ -109,7 +109,8 @@ def run_cross_sectional_backtest_from_panel(
 
                 ranked = ranked.copy()
                 ranked["date"] = trade_date
-                selections.append(ranked[["date", "symbol", "name", "score", "close"]])
+                selection_cols = [col for col in ["date", "symbol", "name", "score", "close", "reason"] if col in ranked.columns]
+                selections.append(ranked[selection_cols])
 
         if not current_symbols:
             portfolio_returns.append(

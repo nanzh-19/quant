@@ -23,6 +23,7 @@ from quant.app import (
 )
 from quant.config import load_config
 from quant.dashboard import build_dashboard, serve_dashboard
+from quant.external_check import ExternalCheckConfig, run_external_price_check
 from quant.quality import run_daily_quality_check
 
 
@@ -30,7 +31,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="A-share daily quant system")
     parser.add_argument(
         "command",
-        choices=["update", "fast_update", "fast_daily", "update_sz", "experiment", "backtest", "recommend", "daily", "status", "plot", "inventory", "quality", "backfill_stocks", "backfill_etfs", "sweep", "stale", "retry_failed", "repair_recent", "dashboard"],
+        choices=["update", "fast_update", "fast_daily", "update_sz", "experiment", "backtest", "recommend", "daily", "status", "plot", "inventory", "quality", "external_check", "backfill_stocks", "backfill_etfs", "sweep", "stale", "retry_failed", "repair_recent", "dashboard"],
         help="Run data update, strategy experiment, backtest, or recommendation report",
     )
     parser.add_argument("--config", default="config/config.yml", help="Config path")
@@ -38,6 +39,8 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=120, help="Chart lookback days")
     parser.add_argument("--max-symbols", type=int, default=200, help="Max symbols for partial Shenzhen update")
     parser.add_argument("--quality-max-symbols", type=int, default=0, help="Max symbols for quality command; 0 means all")
+    parser.add_argument("--sample-size", type=int, default=30, help="Sample size for external_check command")
+    parser.add_argument("--seed", type=int, default=19, help="Random seed for external_check command")
     parser.add_argument("--start-date", default="2000-01-01", help="History start date for backfill commands")
     parser.add_argument("--only-missing", action="store_true", help="Only fetch symbols without local daily csv")
     parser.add_argument("--repair", action="store_true", help="Repair local daily csv files for quality command")
@@ -139,6 +142,23 @@ def main() -> None:
         print(ctx.storage.outputs_dir / "data_quality_summary.csv")
         print(ctx.storage.outputs_dir / "data_quality_report.csv")
         if not args.repair and not summary_df.empty and summary_df.iloc[0]["status"] != "pass":
+            raise SystemExit(1)
+    elif args.command == "external_check":
+        detail_df, summary_df = run_external_price_check(
+            daily_dir=ctx.storage.daily_dir,
+            outputs_dir=ctx.storage.outputs_dir,
+            adjust=str(ctx.config.section("data").get("adjust", "qfq")),
+            config=ExternalCheckConfig(sample_size=args.sample_size, seed=args.seed),
+        )
+        print("=== External Price Check Summary ===")
+        print(summary_df.to_string(index=False))
+        print("=== External Price Check Detail Preview ===")
+        preview_cols = [col for col in ["symbol", "market", "date", "status", "error", "diff_close", "diff_volume", "diff_amount"] if col in detail_df.columns]
+        print(detail_df[preview_cols].head(20).to_string(index=False) if not detail_df.empty else "no_data")
+        print("Saved:")
+        print(ctx.storage.outputs_dir / "external_price_check_summary.csv")
+        print(ctx.storage.outputs_dir / "external_price_check.csv")
+        if not summary_df.empty and summary_df.iloc[0]["status"] != "pass":
             raise SystemExit(1)
     elif args.command == "backfill_stocks":
         start_date = datetime.strptime(args.start_date, "%Y-%m-%d").date()

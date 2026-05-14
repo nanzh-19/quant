@@ -136,6 +136,12 @@ python3 run.py quality
 python3 run.py quality --repair
 ```
 
+抽样对比本地最新 K 线和东方财富接口：
+
+```bash
+python3 run.py external_check --sample-size 30
+```
+
 执行策略参数扫描：
 
 ```bash
@@ -230,12 +236,19 @@ python3 run.py backfill_etfs --start-date 2000-01-01 --max-symbols 0
 - `outputs/backtest_returns.csv`
 - `outputs/backtest_picks.csv`
 - `outputs/backtest_summary.csv`
+- `outputs/backtest_monthly_returns.csv`
+- `outputs/backtest_yearly_returns.csv`
+- `outputs/backtest_drawdowns.csv`
+- `outputs/backtest_turnover.csv`
+- `outputs/backtest_holding_counts.csv`
 - `outputs/backtest_validation_buy_hold.csv`
 
 数据质量：
 
 - `outputs/data_quality_summary.csv`
 - `outputs/data_quality_report.csv`
+- `outputs/external_price_check_summary.csv`
+- `outputs/external_price_check.csv`
 
 参数扫描：
 
@@ -252,6 +265,7 @@ python3 run.py backfill_etfs --start-date 2000-01-01 --max-symbols 0
 
 ```bash
 python3 run.py quality
+python3 run.py external_check --sample-size 30
 python3 scripts/validate_backtest_basics.py
 python3 research/replication/replicate_dual_ma_internal.py
 python3 research/replication/replicate_510300_ma60_public.py
@@ -262,6 +276,7 @@ python3 research/replication/replicate_510300_ma60_public.py
 - `validate_backtest_basics.py` 用 `510300`、`510050`、`159915` 买入持有验证回测引擎逐日收益与独立收盘价计算完全一致。
 - `replicate_dual_ma_internal.py` 用双均线策略验证策略模块输出与独立向量化实现完全一致。
 - `replicate_510300_ma60_public.py` 记录一个公开 60 日均线策略案例。当前本地前复权口径尚未对齐公开材料收益，保留为后续数据口径和交易假设排查样本。
+- `run.py external_check` 会随机抽样本地最新 K 线并请求东方财富同日 K 线，检查 OHLCV 和涨跌幅口径是否一致。
 
 网页入口：
 

@@ -123,6 +123,18 @@ class MomentumStrategy(BaseStrategy):
             + df["ma_gap_20_60"] * self.weight_ma_gap_20_60
             + (-df["volatility_20"]) * self.weight_low_volatility
         )
+        df["reason"] = (
+            "trend_ok;ret20="
+            + df["ret_20"].round(4).astype(str)
+            + ";ret60="
+            + df["ret_60"].round(4).astype(str)
+            + ";ret120="
+            + df["ret_120"].round(4).astype(str)
+            + ";ma_gap="
+            + df["ma_gap_20_60"].round(4).astype(str)
+            + ";vol20="
+            + df["volatility_20"].round(4).astype(str)
+        )
         return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
@@ -195,6 +207,7 @@ class MeanReversionStrategy(BaseStrategy):
             & (df["volatility_20"] <= self.max_volatility_20)
         ]
         df["score"] = -df["ret_20"]
+        df["reason"] = "mean_reversion;ret20=" + df["ret_20"].round(4).astype(str)
         return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
@@ -222,6 +235,7 @@ class LowVolatilityStrategy(BaseStrategy):
             return df
         df = df[(df["ret_60"] >= self.min_ret_60) & (df["volatility_20"] > 0)]
         df["score"] = -df["volatility_20"]
+        df["reason"] = "low_volatility;vol20=" + df["volatility_20"].round(4).astype(str)
         return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
@@ -257,6 +271,7 @@ class DualMAStrategy(BaseStrategy):
             & (df["ma_gap_20_60"] > 0)
         ]
         df["score"] = df["ma_gap_20_60"]
+        df["reason"] = "dual_ma;ma_gap=" + df["ma_gap_20_60"].round(4).astype(str)
         return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
