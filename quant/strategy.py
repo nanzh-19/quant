@@ -368,6 +368,156 @@ class ETFDualMomentumRotationStrategy(BaseStrategy):
         return eligible.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
+class ETFWeightedSlopeRotationStrategy(BaseStrategy):
+    """Cifang-style ETF rotation with weighted 25-day log slope, stop-profit, and cooldown."""
+
+    def __init__(self, strategy_cfg: dict) -> None:
+        self.symbols = [str(s).zfill(6) for s in strategy_cfg.get("symbols", ["159915", "159941", "513030", "513520", "159985", "518880"])]
+        self.max_positions = int(strategy_cfg.get("max_positions", 1))
+        self.score_column = str(strategy_cfg.get("score_column", "weighted_slope_25"))
+        self.min_score = float(strategy_cfg.get("min_score", 0.0))
+        self.max_score = float(strategy_cfg.get("max_score", 5.0))
+        self.stop_profit_drawdown = float(strategy_cfg.get("stop_profit_drawdown", 0.05))
+        self.cooldown_days = int(strategy_cfg.get("cooldown_days", 5))
+        self._active_symbol: str = ""
+        self._active_high: float = 0.0
+        self._cooldown_remaining: int = 0
+
+    @property
+    def name(self) -> str:
+        return "etf_weighted_slope_rotation"
+
+    def params(self) -> dict:
+        return {
+            "symbols": self.symbols,
+            "max_positions": self.max_positions,
+            "score_column": self.score_column,
+            "min_score": self.min_score,
+            "max_score": self.max_score,
+            "stop_profit_drawdown": self.stop_profit_drawdown,
+            "cooldown_days": self.cooldown_days,
+        }
+
+    def _reset_state(self) -> None:
+        self._active_symbol = ""
+        self._active_high = 0.0
+        self._cooldown_remaining = 0
+
+    def rank(self, snapshot: pd.DataFrame) -> pd.DataFrame:
+        if snapshot.empty:
+            return snapshot
+        df = snapshot.copy()
+        if "date" not in df.columns:
+            return df.head(0)
+        df["symbol"] = df["symbol"].astype(str).str.zfill(6)
+        df = df[df["symbol"].isin(self.symbols)].copy()
+        if df.empty:
+            return df
+
+        score_col = self.score_column
+        if score_col not in df.columns:
+            df[score_col] = pd.NA
+        df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
+        df = df.dropna(subset=[score_col, "close"])
+        if df.empty:
+            return df
+
+        trade_date = pd.to_datetime(df["date"].iloc[0]).date()
+
+        if self._cooldown_remaining > 0:
+            self._cooldown_remaining -= 1
+            if self._cooldown_remaining == 0:
+                self._reset_state()
+            return df.head(0)
+
+        if self._active_symbol:
+            active_row = df[df["symbol"] == self._active_symbol]
+            if not active_row.empty:
+                close = float(active_row["close"].iloc[0])
+                self._active_high = max(self._active_high, close)
+                if self._active_high > 0 and close <= self._active_high * (1.0 - self.stop_profit_drawdown):
+                    self._cooldown_remaining = self.cooldown_days
+                    self._reset_state()
+                    self._cooldown_remaining = self.cooldown_days
+                    return df.head(0)
+
+        df["score"] = df[score_col]
+        df = df[(df["score"] >= self.min_score) & (df["score"] <= self.max_score)]
+        if df.empty:
+            self._reset_state()
+            return df
+
+        selected = df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
+        chosen = str(selected["symbol"].iloc[0]) if not selected.empty else ""
+        if chosen and chosen != self._active_symbol:
+            self._active_symbol = chosen
+            self._active_high = float(selected["close"].iloc[0])
+        elif chosen:
+            self._active_high = max(self._active_high, float(selected["close"].iloc[0]))
+        selected["reason"] = (
+            "weighted_slope;score="
+            + selected["score"].round(4).astype(str)
+            + ";cooldown="
+            + str(self.cooldown_days)
+            + ";date="
+            + str(trade_date)
+        )
+        return selected
+
+
+class ETFRSRSRotationStrategy(BaseStrategy):
+    """RSRS ETF rotation with 18-day high/low slope and 600-day z-score hysteresis."""
+
+    def __init__(self, strategy_cfg: dict) -> None:
+        self.symbols = [str(s).zfill(6) for s in strategy_cfg.get("symbols", ["518880", "513100"])]
+        self.score_column = str(strategy_cfg.get("score_column", "rsrs_z_18_600"))
+        self.max_positions = int(strategy_cfg.get("max_positions", len(self.symbols)))
+        self._held_symbols: set[str] = set()
+
+    @property
+    def name(self) -> str:
+        return "etf_rsrs_rotation"
+
+    def params(self) -> dict:
+        return {
+            "symbols": self.symbols,
+            "score_column": self.score_column,
+            "max_positions": self.max_positions,
+        }
+
+    def rank(self, snapshot: pd.DataFrame) -> pd.DataFrame:
+        if snapshot.empty:
+            return snapshot
+        df = snapshot.copy()
+        df["symbol"] = df["symbol"].astype(str).str.zfill(6)
+        df = df[df["symbol"].isin(self.symbols)].copy()
+        if df.empty:
+            return df
+        if self.score_column not in df.columns:
+            df[self.score_column] = pd.NA
+        df[self.score_column] = pd.to_numeric(df[self.score_column], errors="coerce")
+        df = df.dropna(subset=[self.score_column])
+        if df.empty:
+            return df
+
+        for row in df.itertuples(index=False):
+            symbol = str(row.symbol).zfill(6)
+            z_score = float(getattr(row, self.score_column))
+            buy_signal = (0.0 < z_score < 2.0) or (z_score < -2.0)
+            sell_signal = (-2.0 < z_score < -1.0) or (z_score > 3.0)
+            if symbol in self._held_symbols and sell_signal:
+                self._held_symbols.remove(symbol)
+            elif symbol not in self._held_symbols and buy_signal:
+                self._held_symbols.add(symbol)
+
+        selected = df[df["symbol"].isin(self._held_symbols)].copy()
+        if selected.empty:
+            return selected
+        selected["score"] = selected[self.score_column]
+        selected["reason"] = "rsrs;z=" + selected["score"].round(4).astype(str)
+        return selected.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
+
+
 STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "momentum": MomentumStrategy,
     "buy_and_hold": BuyAndHoldStrategy,
@@ -376,6 +526,8 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "dual_ma": DualMAStrategy,
     "etf_regression_momentum": ETFRegressionMomentumStrategy,
     "etf_dual_momentum_rotation": ETFDualMomentumRotationStrategy,
+    "etf_weighted_slope_rotation": ETFWeightedSlopeRotationStrategy,
+    "etf_rsrs_rotation": ETFRSRSRotationStrategy,
 }
 
 
