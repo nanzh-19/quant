@@ -311,6 +311,63 @@ class ETFRegressionMomentumStrategy(BaseStrategy):
         return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
+class ETFDualMomentumRotationStrategy(BaseStrategy):
+    """Public ETF rotation sample: 60-day relative momentum with a 200-day trend filter."""
+
+    def __init__(self, strategy_cfg: dict) -> None:
+        self.symbols = [str(s).zfill(6) for s in strategy_cfg.get("symbols", ["510300", "510500", "518880", "159934", "513100", "513500", "511380", "511010"])]
+        self.max_positions = int(strategy_cfg.get("max_positions", 2))
+        self.momentum_column = str(strategy_cfg.get("momentum_column", "ret_60"))
+        self.trend_column = str(strategy_cfg.get("trend_column", "ma_200"))
+        self.fallback_symbol = str(strategy_cfg.get("fallback_symbol", "")).zfill(6) if strategy_cfg.get("fallback_symbol") else ""
+
+    @property
+    def name(self) -> str:
+        return "etf_dual_momentum_rotation"
+
+    def params(self) -> dict:
+        return {
+            "symbols": self.symbols,
+            "max_positions": self.max_positions,
+            "momentum_column": self.momentum_column,
+            "trend_column": self.trend_column,
+            "fallback_symbol": self.fallback_symbol,
+        }
+
+    def rank(self, snapshot: pd.DataFrame) -> pd.DataFrame:
+        if snapshot.empty:
+            return snapshot
+        df = snapshot.copy()
+        for column in [self.momentum_column, self.trend_column]:
+            if column not in df.columns:
+                df[column] = pd.NA
+        df["symbol"] = df["symbol"].astype(str).str.zfill(6)
+        df = df[df["symbol"].isin(self.symbols)].copy()
+        df[self.momentum_column] = pd.to_numeric(df[self.momentum_column], errors="coerce")
+        df[self.trend_column] = pd.to_numeric(df[self.trend_column], errors="coerce")
+        df = df.dropna(subset=[self.momentum_column, self.trend_column, "close"])
+        eligible = df[(df["close"] > df[self.trend_column]) & (df[self.momentum_column] > 0)].copy()
+
+        if eligible.empty and self.fallback_symbol:
+            fallback = df[df["symbol"] == self.fallback_symbol].copy()
+            if not fallback.empty:
+                fallback["score"] = 0.0
+                fallback["reason"] = "fallback_cash_proxy"
+                return fallback.head(1).reset_index(drop=True)
+            return df.head(0)
+        if eligible.empty:
+            return df.head(0)
+
+        eligible["score"] = eligible[self.momentum_column]
+        eligible["reason"] = (
+            "etf_dual_momentum;momentum="
+            + eligible[self.momentum_column].round(4).astype(str)
+            + ";close_gt_"
+            + self.trend_column
+        )
+        return eligible.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
+
+
 STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "momentum": MomentumStrategy,
     "buy_and_hold": BuyAndHoldStrategy,
@@ -318,6 +375,7 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "low_volatility": LowVolatilityStrategy,
     "dual_ma": DualMAStrategy,
     "etf_regression_momentum": ETFRegressionMomentumStrategy,
+    "etf_dual_momentum_rotation": ETFDualMomentumRotationStrategy,
 }
 
 

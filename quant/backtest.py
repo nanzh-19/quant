@@ -42,7 +42,7 @@ def build_backtest_panel(
     return panel
 
 
-def _is_rebalance_day(current_date, prev_rebalance_date, frequency: str) -> bool:
+def _is_rebalance_day(current_date, prev_rebalance_date, frequency: str, next_date=None) -> bool:
     if frequency == "daily":
         return True
     if prev_rebalance_date is None:
@@ -51,6 +51,10 @@ def _is_rebalance_day(current_date, prev_rebalance_date, frequency: str) -> bool
         return current_date.weekday() < prev_rebalance_date.weekday() or (current_date - prev_rebalance_date).days >= 3
     if frequency == "monthly":
         return current_date.month != prev_rebalance_date.month or current_date.year != prev_rebalance_date.year
+    if frequency == "month_end":
+        if next_date is None:
+            return True
+        return current_date.month != next_date.month or current_date.year != next_date.year
     return True
 
 
@@ -73,8 +77,10 @@ def run_cross_sectional_backtest_from_panel(
     prev_rebalance_date = None
     day_turnover = 0.0
 
-    for trade_date, day_df in panel.groupby("date"):
-        rebalance = _is_rebalance_day(trade_date, prev_rebalance_date, rebalance_frequency)
+    daily_groups = list(panel.groupby("date"))
+    for index, (trade_date, day_df) in enumerate(daily_groups):
+        next_date = daily_groups[index + 1][0] if index + 1 < len(daily_groups) else None
+        rebalance = _is_rebalance_day(trade_date, prev_rebalance_date, rebalance_frequency, next_date=next_date)
         cost = 0.0
         day_turnover = 0.0
 

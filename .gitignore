@@ -12,5 +12,9 @@ outputs/*
 config/config.yml
 config/local*.yml
 
+PROCESS_LOG.md
+docs/validation_report.md
+local_notes/
+
 hongli/dividend_analysis/outputs/
 tools/cloudflared
