@@ -275,6 +275,73 @@ class DualMAStrategy(BaseStrategy):
         return df.sort_values("score", ascending=False).head(self.max_positions).reset_index(drop=True)
 
 
+class SMACrossStrategy(BaseStrategy):
+    """Single-asset SMA crossover signal used by public backtesting.py replication.
+
+    This strategy emits a long signal when the fast SMA crosses above the slow SMA
+    and a short signal when it crosses below. The cross-sectional portfolio engine
+    only consumes positive weights, so the class is mainly intended as a reusable
+    signal definition for validation and event-driven strategy modules.
+    """
+
+    def __init__(self, strategy_cfg: dict) -> None:
+        self.symbols = [str(s).zfill(6) for s in strategy_cfg.get("symbols", [])]
+        self.fast_window = int(strategy_cfg.get("fast_window", 10))
+        self.slow_window = int(strategy_cfg.get("slow_window", 20))
+        self.fast_column = str(strategy_cfg.get("fast_column", f"ma_{self.fast_window}"))
+        self.slow_column = str(strategy_cfg.get("slow_column", f"ma_{self.slow_window}"))
+
+    @property
+    def name(self) -> str:
+        return "sma_cross"
+
+    def params(self) -> dict:
+        return {
+            "symbols": self.symbols,
+            "fast_window": self.fast_window,
+            "slow_window": self.slow_window,
+            "fast_column": self.fast_column,
+            "slow_column": self.slow_column,
+        }
+
+    def signal(self, history: pd.DataFrame) -> int:
+        if len(history) < 2:
+            return 0
+        if self.fast_column not in history.columns or self.slow_column not in history.columns:
+            return 0
+        fast = pd.to_numeric(history[self.fast_column], errors="coerce")
+        slow = pd.to_numeric(history[self.slow_column], errors="coerce")
+        if fast.iloc[-2:].isna().any() or slow.iloc[-2:].isna().any():
+            return 0
+        if float(fast.iloc[-2]) < float(slow.iloc[-2]) and float(fast.iloc[-1]) > float(slow.iloc[-1]):
+            return 1
+        if float(slow.iloc[-2]) < float(fast.iloc[-2]) and float(slow.iloc[-1]) > float(fast.iloc[-1]):
+            return -1
+        return 0
+
+    def rank(self, snapshot: pd.DataFrame) -> pd.DataFrame:
+        if snapshot.empty:
+            return snapshot
+        df = snapshot.copy()
+        if self.symbols:
+            df["symbol"] = df["symbol"].astype(str).str.zfill(6)
+            df = df[df["symbol"].isin(self.symbols)].copy()
+        for column in [self.fast_column, self.slow_column]:
+            if column not in df.columns:
+                df[column] = pd.NA
+        df[self.fast_column] = pd.to_numeric(df[self.fast_column], errors="coerce")
+        df[self.slow_column] = pd.to_numeric(df[self.slow_column], errors="coerce")
+        df = df.dropna(subset=[self.fast_column, self.slow_column])
+        if df.empty:
+            return df
+        df = df[df[self.fast_column] > df[self.slow_column]].copy()
+        if df.empty:
+            return df
+        df["score"] = df[self.fast_column] / df[self.slow_column] - 1.0
+        df["reason"] = "sma_cross;fast_gt_slow;gap=" + df["score"].round(6).astype(str)
+        return df.sort_values("score", ascending=False).reset_index(drop=True)
+
+
 class ETFRegressionMomentumStrategy(BaseStrategy):
     """ETF 轮动：用近 25 日对数价格回归年化收益 * R2 作为动量得分。"""
 
@@ -525,6 +592,7 @@ STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "mean_reversion": MeanReversionStrategy,
     "low_volatility": LowVolatilityStrategy,
     "dual_ma": DualMAStrategy,
+    "sma_cross": SMACrossStrategy,
     "etf_regression_momentum": ETFRegressionMomentumStrategy,
     "etf_dual_momentum_rotation": ETFDualMomentumRotationStrategy,
     "etf_weighted_slope_rotation": ETFWeightedSlopeRotationStrategy,
