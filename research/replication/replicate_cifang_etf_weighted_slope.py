@@ -54,7 +54,7 @@ def _independent_returns(panel: pd.DataFrame, strategy_cfg: dict, report_start_d
     rows = []
     active_symbol = ""
     active_high = 0.0
-    cooldown_remaining = 0
+    frozen_symbols: dict[str, int] = {}
     score_col = strategy_cfg["score_column"]
     min_score = strategy_cfg["min_score"]
     max_score = strategy_cfg["max_score"]
@@ -63,13 +63,11 @@ def _independent_returns(panel: pd.DataFrame, strategy_cfg: dict, report_start_d
 
     for trade_date, day_df in panel.groupby("date"):
         day = day_df.copy()
-        if cooldown_remaining > 0:
-            cooldown_remaining -= 1
-            if cooldown_remaining == 0:
-                active_symbol = ""
-                active_high = 0.0
-            rows.append({"date": trade_date, "expected_return": 0.0, "expected_symbol": ""})
-            continue
+        frozen_symbols = {
+            symbol: days - 1
+            for symbol, days in frozen_symbols.items()
+            if days - 1 > 0
+        }
 
         if active_symbol:
             active_row = day[day["symbol"].astype(str).str.zfill(6) == active_symbol]
@@ -77,14 +75,14 @@ def _independent_returns(panel: pd.DataFrame, strategy_cfg: dict, report_start_d
                 close = float(active_row["close"].iloc[0])
                 active_high = max(active_high, close)
                 if active_high > 0 and close <= active_high * (1.0 - stop_profit_drawdown):
+                    frozen_symbols[active_symbol] = cooldown_days
                     active_symbol = ""
                     active_high = 0.0
-                    cooldown_remaining = cooldown_days
-                    rows.append({"date": trade_date, "expected_return": 0.0, "expected_symbol": ""})
-                    continue
 
         day[score_col] = pd.to_numeric(day[score_col], errors="coerce")
         candidates = day[(day[score_col] >= min_score) & (day[score_col] <= max_score)].copy()
+        if frozen_symbols:
+            candidates = candidates[~candidates["symbol"].astype(str).str.zfill(6).isin(frozen_symbols)]
         candidates = candidates.dropna(subset=[score_col, "close"])
         if candidates.empty:
             active_symbol = ""

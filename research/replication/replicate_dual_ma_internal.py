@@ -100,7 +100,8 @@ def main() -> None:
     args = parser.parse_args()
 
     result = pd.DataFrame([validate_dual_ma(str(symbol).zfill(6), args.start_date, args.end_date) for symbol in args.symbols])
-    out_path = PROJECT_ROOT / "outputs" / "replication_dual_ma_internal.csv"
+    out_path = PROJECT_ROOT / "outputs" / "validation" / "internal" / "replication_dual_ma_internal.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(out_path, index=False)
     print(result.to_string(index=False))
     print(f"saved={out_path}")

@@ -50,7 +50,7 @@ def _load_panel(symbols: list[str], start_date: str, end_date: str) -> pd.DataFr
 
 def _independent_returns(panel: pd.DataFrame, max_positions: int, fallback_symbol: str, rebalance_frequency: str) -> pd.DataFrame:
     rows = []
-    current_symbols: set[str] = set()
+    current_weights: dict[str, float] = {}
     prev_rebalance_date = None
     daily_groups = list(panel.groupby("date"))
 
@@ -71,20 +71,33 @@ def _independent_returns(panel: pd.DataFrame, max_positions: int, fallback_symbo
             candidates = day[(day["close"] > day["ma_200"]) & (day["ret_60"] > 0)].copy()
             if candidates.empty and fallback_symbol:
                 fallback = day[day["symbol"].astype(str).str.zfill(6) == fallback_symbol]
-                current_symbols = {fallback_symbol} if not fallback.empty else set()
+                current_weights = {fallback_symbol: 1.0} if not fallback.empty else {}
             elif candidates.empty:
-                current_symbols = set()
+                current_weights = {}
             else:
                 selected = candidates.sort_values("ret_60", ascending=False).head(max_positions)
                 current_symbols = set(selected["symbol"].astype(str).str.zfill(6))
+                equal_weight = 1.0 / len(current_symbols) if current_symbols else 0.0
+                current_weights = {symbol: equal_weight for symbol in current_symbols}
             prev_rebalance_date = trade_date
 
-        if not current_symbols:
+        if not current_weights:
             expected_return = 0.0
         else:
-            held = day_df[day_df["symbol"].astype(str).str.zfill(6).isin(current_symbols)]
-            expected_return = float(held["fwd_ret_1"].mean()) if not held.empty else 0.0
-        rows.append({"date": trade_date, "expected_return": expected_return, "expected_symbols": ",".join(sorted(current_symbols))})
+            held = day_df.copy()
+            held["symbol"] = held["symbol"].astype(str).str.zfill(6)
+            returns_by_symbol = {
+                str(row.symbol): float(row.fwd_ret_1)
+                for row in held[held["symbol"].isin(current_weights)].itertuples(index=False)
+                if pd.notna(row.fwd_ret_1)
+            }
+            expected_return = sum(weight * returns_by_symbol.get(symbol, 0.0) for symbol, weight in current_weights.items())
+            if expected_return > -1.0:
+                current_weights = {
+                    symbol: weight * (1.0 + returns_by_symbol.get(symbol, 0.0)) / (1.0 + expected_return)
+                    for symbol, weight in current_weights.items()
+                }
+        rows.append({"date": trade_date, "expected_return": expected_return, "expected_symbols": ",".join(sorted(current_weights))})
 
     out = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
     out["equity"] = 1_000_000 * (1.0 + out["expected_return"]).cumprod()

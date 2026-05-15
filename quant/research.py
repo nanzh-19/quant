@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from pandas.errors import EmptyDataError, ParserError
 
-from quant.indicators import add_basic_indicators
+from quant.engine.indicators import add_basic_indicators
 
 
 def build_latest_snapshot(

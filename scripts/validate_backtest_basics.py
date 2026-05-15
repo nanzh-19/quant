@@ -87,7 +87,7 @@ def main() -> None:
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     parser.add_argument("--start-date", default="2015-01-01")
     parser.add_argument("--end-date", default="2025-12-31")
-    parser.add_argument("--output", default=str(PROJECT_ROOT / "outputs" / "backtest_validation_buy_hold.csv"))
+    parser.add_argument("--output", default=str(PROJECT_ROOT / "outputs" / "validation" / "internal" / "backtest_validation_buy_hold.csv"))
     args = parser.parse_args()
 
     rows = [validate_symbol(str(symbol).zfill(6), args.start_date, args.end_date) for symbol in args.symbols]
