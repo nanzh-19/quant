@@ -4,21 +4,23 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -f "$ROOT_DIR/.venv/bin/activate" ]]; then
-  # Prefer the project venv when available so cron and shell runs use the same environment.
-  # shellcheck disable=SC1091
-  source "$ROOT_DIR/.venv/bin/activate"
+PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="$(command -v python3)"
 fi
 
+export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/quant_mplconfig_${USER:-user}}"
+mkdir -p "$MPLCONFIGDIR"
 mkdir -p outputs/logs
 LOG_FILE="outputs/logs/daily_$(date +%F).log"
 
 {
   echo "[$(date '+%F %T')] daily job started"
-  python3 run.py fast_daily --workers 16 --lookback-days 7
+  echo "python: $("$PYTHON_BIN" --version 2>&1) ($PYTHON_BIN)"
+  "$PYTHON_BIN" run.py fast_daily --workers 8 --lookback-days 7
   echo "[$(date '+%F %T')] daily job finished"
   echo "status: outputs/daily_status.md"
   echo "inventory: outputs/data_inventory_summary.csv"
   echo "quality: outputs/data_quality_summary.csv"
   echo "recommendations: outputs/daily_recommendations.csv"
-} | tee -a "$LOG_FILE"
+} 2>&1 | tee -a "$LOG_FILE"

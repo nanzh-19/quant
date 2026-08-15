@@ -141,24 +141,29 @@ def _fetch_history_with_reliable_fallback(
     asset_type: str,
     start_date: date,
 ) -> pd.DataFrame:
-    if asset_type == "etf":
-        try:
+    provider_error: Exception | None = None
+    try:
+        result = ctx.provider.fetch_daily_history(symbol=symbol, market=market, start_date=start_date)
+        validated = _validate_daily_frame(result.rows, symbol=symbol)
+        if not validated.empty:
+            return validated
+    except Exception as exc:
+        provider_error = exc
+
+    try:
+        if asset_type == "etf":
             return _validate_daily_frame(
                 _fetch_etf_history_via_akshare(symbol=symbol, market=market, start_date=start_date),
                 symbol=symbol,
             )
-        except Exception:
-            result = ctx.provider.fetch_daily_history(symbol=symbol, market=market, start_date=start_date)
-            return _validate_daily_frame(result.rows, symbol=symbol)
-
-    try:
         return _validate_daily_frame(
             _fetch_stock_history_via_akshare(symbol=symbol, market=market, start_date=start_date),
             symbol=symbol,
         )
     except Exception:
-        result = ctx.provider.fetch_daily_history(symbol=symbol, market=market, start_date=start_date)
-        return _validate_daily_frame(result.rows, symbol=symbol)
+        if provider_error is not None:
+            raise provider_error
+        raise
 
 
 def build_app(config: AppConfig) -> AppContext:
@@ -385,7 +390,7 @@ def _run_targeted_update(
                         "name": getattr(row, "name", ""),
                         "asset_type": getattr(row, "asset_type", ""),
                         "market": market,
-                        "last_date_before": getattr(row, "_last_date", ""),
+                        "last_date_before": getattr(row, "last_date_before", ""),
                         "error": error or "empty_result",
                     }
                 )
@@ -483,7 +488,7 @@ def retry_failed_symbols(ctx: AppContext, workers: int = 8, lookback_days: int =
     universe = ctx.storage.read_universe()
     universe["symbol"] = universe["symbol"].astype(str).str.zfill(6)
     target_df = universe[universe["symbol"].isin(set(failures["symbol"].astype(str).str.zfill(6)))].copy()
-    target_df["_last_date"] = target_df["symbol"].map(
+    target_df["last_date_before"] = target_df["symbol"].map(
         lambda s: failures.set_index(failures["symbol"].astype(str).str.zfill(6))["last_date_before"].to_dict().get(s, "")
     )
     start_date = date.today() - timedelta(days=lookback_days)
@@ -524,24 +529,10 @@ def fast_update_data(ctx: AppContext, workers: int = 16, lookback_days: int = 7)
     reference_date = max(counter)
     stale_targets = targets[targets["symbol"].map(lambda s: last_dates.get(str(s).zfill(6), "")) < reference_date].copy()
     if stale_targets.empty:
-        ctx.storage.log_update(
-            run_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            scope="fast_incremental",
-            symbols=0,
-            rows_written=0,
-            note=f"reference_date={reference_date};stale=0",
-        )
-        return {
-            "scope": "fast_incremental",
-            "reference_date": reference_date,
-            "requested_symbols": 0,
-            "downloaded_symbols": 0,
-            "failed_symbols": 0,
-            "rows_written": 0,
-        }
+        stale_targets = targets.copy()
 
-    stale_targets["_last_date"] = stale_targets["symbol"].map(lambda s: last_dates.get(str(s).zfill(6), ""))
-    stale_targets = stale_targets.sort_values(["_last_date", "asset_type", "symbol"]).reset_index(drop=True)
+    stale_targets["last_date_before"] = stale_targets["symbol"].map(lambda s: last_dates.get(str(s).zfill(6), ""))
+    stale_targets = stale_targets.sort_values(["last_date_before", "asset_type", "symbol"]).reset_index(drop=True)
 
     start_date = pd.to_datetime(reference_date).date() - timedelta(days=lookback_days)
     return _run_targeted_update(
